@@ -29,5 +29,6 @@
 bool isWiFiConnected();
 void setUpWiFi(DeviceConfig * const config);
 void wifiUpkeep();
+void setWiFiCredentials(const char * SSID, const char * pass);
 
 #endif // _WIFI_H_
