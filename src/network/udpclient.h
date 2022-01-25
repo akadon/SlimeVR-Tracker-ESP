@@ -30,7 +30,7 @@
 #include "configuration.h"
 #include "sensors/sensor.h"
 #include "wifihandler.h"
-#include "defines.h"
+#include "globals.h"
 
 namespace Network {
     void connect();
