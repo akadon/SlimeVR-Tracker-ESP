@@ -23,8 +23,15 @@
 #ifndef SLIMEVR_NETWORK_H_
 #define SLIMEVR_NETWORK_H_
 
+#include "globals.h"
 #include "wifihandler.h"
 #include "udpclient.h"
 #include "packets.h"
+#include "wifiprovisioning.h"
+
+namespace Network {
+    void update(Sensor * const sensor, Sensor * const sensor2);
+    void setUp();
+}
 
 #endif // SLIMEVR_NETWORK_H_
