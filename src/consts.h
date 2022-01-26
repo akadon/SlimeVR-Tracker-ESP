@@ -28,9 +28,9 @@
 #define IMU_MPU6500 2
 #define IMU_BNO080 3
 #define IMU_BNO085 4
-#define IMU_BNO086 4
 #define IMU_BNO055 5
 #define IMU_MPU6050 6
+#define IMU_BNO086 7
 
 #define BOARD_SLIMEVR 1
 #define BOARD_SLIMEVR_DEV 2
@@ -39,6 +39,18 @@
 #define BOARD_WROOM32 5
 #define BOARD_WEMOSD1MINI 6
 #define BOARD_TTGO_TBASE 7
+#define BOARD_ESP01 8
+
+#define BAT_EXTERNAL 1
+#define BAT_INTERNAL 2
+#define BAT_MCP3021 3
+#define BAT_INTERNAL_MCP3021 4
+
+#define POWER_SAVING_NONE 0
+#define POWER_SAVING_MINIMUM 1
+#define POWER_SAVING_MODERATE 2
+//Should not be used yet => disconnects a lot
+//#define POWER_SAVING_MAXIMUM 3
 
 #define DEG_0 0.f
 #define DEG_90 -PI / 2
