@@ -33,6 +33,8 @@ struct CalibrationConfig {
     float M_Ainv[3][3];
     //raw offsets, determined for gyro at rest
     float G_off[3];
+    // calibration temperature for dynamic compensation
+    float temperature;
 };
 
 struct DeviceConfig {
