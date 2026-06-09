@@ -27,7 +27,7 @@
 #include "Wire.h"
 #include "batterymonitor.h"
 #include "credentials.h"
-#include "debugging/TimeTaken.h"
+#include "debugging/Benchmark.h"
 #include "globals.h"
 #include "logging/Logger.h"
 #include "ota.h"
@@ -45,9 +45,17 @@ SlimeVR::Network::Connection networkConnection;
 SlimeVR::WiFiNetwork wifiNetwork;
 SlimeVR::WifiProvisioning wifiProvisioning;
 
-#if DEBUG_MEASURE_SENSOR_TIME_TAKEN
-SlimeVR::Debugging::TimeTakenMeasurer sensorMeasurer{"Sensors"};
-#endif
+SlimeVR::Debugging::Benchmark tpsCounterBM{"tpsCounter.update()"};
+SlimeVR::Debugging::Benchmark globalTimerBM{"globalTimer.tick()"};
+SlimeVR::Debugging::Benchmark serialCommandsBM{"SerialCommands::update()"};
+SlimeVR::Debugging::Benchmark otaBM{"OTA::otaUpdate()"};
+SlimeVR::Debugging::Benchmark networkManagerBM{"networkManager.update()"};
+SlimeVR::Debugging::Benchmark sensorManagerBM{"sensorManager.update()"};
+SlimeVR::Debugging::Benchmark batteryBM{"battery.Loop()"};
+SlimeVR::Debugging::Benchmark ledManagerBM{"ledManager.update()"};
+SlimeVR::Debugging::Benchmark i2cScanBM{"I2CSCAN::update()"};
+SlimeVR::Debugging::Benchmark targetLooptimeBM{"TARGET_LOOPTIME_MICROS"};
+SlimeVR::Debugging::Benchmark printStateBM{"Serial printState()"};
 
 int sensorToCalibrate = -1;
 bool blinking = false;
@@ -153,24 +161,44 @@ void setup() {
 }
 
 void loop() {
+	tpsCounterBM.before();
 	tpsCounter.update();
+	tpsCounterBM.after();
+
+	globalTimerBM.before();
 	globalTimer.tick();
+	globalTimerBM.after();
+
+	serialCommandsBM.before();
 	SerialCommands::update();
+	serialCommandsBM.after();
+
+	otaBM.before();
 	OTA::otaUpdate();
+	otaBM.after();
+
+	networkManagerBM.before();
 	networkManager.update();
+	networkManagerBM.after();
 
-#if DEBUG_MEASURE_SENSOR_TIME_TAKEN
-	sensorMeasurer.before();
-#endif
+	sensorManagerBM.before();
 	sensorManager.update();
-#if DEBUG_MEASURE_SENSOR_TIME_TAKEN
-	sensorMeasurer.after();
-#endif
+	sensorManagerBM.after();
 
+	batteryBM.before();
 	battery.Loop();
+	batteryBM.after();
+
+	ledManagerBM.before();
 	ledManager.update();
+	ledManagerBM.after();
+
+	i2cScanBM.before();
 	I2CSCAN::update();
+	i2cScanBM.after();
+
 #ifdef TARGET_LOOPTIME_MICROS
+	targetLooptimeBM.before();
 	long elapsed = (micros() - loopTime);
 	if (elapsed < TARGET_LOOPTIME_MICROS) {
 		long sleepus = TARGET_LOOPTIME_MICROS - elapsed - 100;  // µs to sleep
@@ -185,12 +213,15 @@ void loop() {
 		}
 	}
 	loopTime = micros();
+	targetLooptimeBM.after();
 #endif
 #if defined(PRINT_STATE_EVERY_MS) && PRINT_STATE_EVERY_MS > 0
+	printStateBM.before();
 	unsigned long now = millis();
 	if (lastStatePrint + PRINT_STATE_EVERY_MS < now) {
 		lastStatePrint = now;
 		SerialCommands::printState();
 	}
+	printStateBM.after();
 #endif
 }
