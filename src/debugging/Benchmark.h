@@ -28,6 +28,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 #include "../logging/Logger.h"
 
@@ -43,14 +44,15 @@ public:
 
 	void before();
 	void after();
+	static void tick();
 
 private:
 	static constexpr float ReportsIntervalSeconds = 10.0f;
 
-	void printReport();
+	void printReport() const;
 	void reset();
 
-	uint32_t lastReportMillis = millis();
+	static uint32_t lastReportMillis;
 
 	uint64_t currentMeasurementStartMicros = 0;
 
@@ -60,8 +62,11 @@ private:
 	uint32_t measurementCount = 0;
 
 	const char* name;
+	bool registered = false;
 
-	SlimeVR::Logging::Logger m_Logger = SlimeVR::Logging::Logger("Benchmark");
+	static SlimeVR::Logging::Logger logger;
+	static std::vector<Benchmark*> benchmarkInstances;
+	static uint32_t totalLoops;
 };
 
 }  // namespace SlimeVR::Debugging
