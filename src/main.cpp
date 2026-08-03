@@ -203,6 +203,18 @@ void loop() {
 	I2CSCAN::update();
 	i2cScanBM.after();
 
+#if defined(PRINT_STATE_EVERY_MS) && PRINT_STATE_EVERY_MS > 0
+	printStateBM.before();
+	unsigned long now = millis();
+	if (lastStatePrint + PRINT_STATE_EVERY_MS < now) {
+		lastStatePrint = now;
+		SerialCommands::printState();
+	}
+	printStateBM.after();
+#endif
+
+	SlimeVR::Logging::Logger::tick();
+
 #ifdef TARGET_LOOPTIME_MICROS
 	targetLooptimeBM.before();
 	long elapsed = (micros() - loopTime);
@@ -221,16 +233,5 @@ void loop() {
 	loopTime = micros();
 	targetLooptimeBM.after();
 #endif
-#if defined(PRINT_STATE_EVERY_MS) && PRINT_STATE_EVERY_MS > 0
-	printStateBM.before();
-	unsigned long now = millis();
-	if (lastStatePrint + PRINT_STATE_EVERY_MS < now) {
-		lastStatePrint = now;
-		SerialCommands::printState();
-	}
-	printStateBM.after();
-#endif
-
 	SlimeVR::Debugging::Benchmark::tick();
-	SlimeVR::Logging::Logger::tick();
 }
