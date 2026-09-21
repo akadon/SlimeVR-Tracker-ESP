@@ -24,7 +24,6 @@
 #include "LEDManager.h"
 
 #include "../GlobalVars.h"
-#include "Status.h"
 
 namespace SlimeVR {
 void LEDManager::setup() {
@@ -61,123 +60,28 @@ void LEDManager::pattern(unsigned long timeon, unsigned long timeoff, int times)
 	}
 }
 
+void LEDManager::setOwned(bool owned) { m_Owned = owned; }
+
 void LEDManager::update() {
-	unsigned long time = millis();
-	unsigned long diff = time - m_LastUpdate;
-
-	// Don't tick the LEDManager *too* often
-	if (diff < 10) {
+	// The LED carries exactly one meaning: SlimeVR is connected. It stays dark
+	// at every other moment, including while the tracker is still hunting for
+	// the server, so a lit LED is never ambiguous about what it is telling you.
+	//
+	// Written unconditionally rather than only when the state changes, because
+	// the calibration routines drive the LED directly through on()/off(). A
+	// change-only write would leave whatever they last set in place.
+	//
+	// While one of those routines owns the LED it is showing something with it,
+	// and repainting from the connection state would put the two meanings on the
+	// same light at the same time.
+	if (m_Owned) {
 		return;
 	}
 
-	m_LastUpdate = time;
-
-	unsigned int length = 0;
-	unsigned int count = 0;
-
-	if (statusManager.hasStatus(Status::LOW_BATTERY)) {
-		count = LOW_BATTERY_COUNT;
-		switch (m_CurrentStage) {
-			case ON:
-			case OFF:
-				length = LOW_BATTERY_LENGTH;
-				break;
-			case GAP:
-				length = DEFAULT_GAP;
-				break;
-			case INTERVAL:
-				length = LOW_BATTERY_INTERVAL;
-				break;
-		}
-	} else if (statusManager.hasStatus(Status::IMU_ERROR)) {
-		count = IMU_ERROR_COUNT;
-		switch (m_CurrentStage) {
-			case ON:
-			case OFF:
-				length = IMU_ERROR_LENGTH;
-				break;
-			case GAP:
-				length = DEFAULT_GAP;
-				break;
-			case INTERVAL:
-				length = IMU_ERROR_INTERVAL;
-				break;
-		}
-	} else if (statusManager.hasStatus(Status::WIFI_CONNECTING)) {
-		count = WIFI_CONNECTING_COUNT;
-		switch (m_CurrentStage) {
-			case ON:
-			case OFF:
-				length = WIFI_CONNECTING_LENGTH;
-				break;
-			case GAP:
-				length = DEFAULT_GAP;
-				break;
-			case INTERVAL:
-				length = WIFI_CONNECTING_INTERVAL;
-				break;
-		}
-	} else if (statusManager.hasStatus(Status::SERVER_CONNECTING)) {
-		count = SERVER_CONNECTING_COUNT;
-		switch (m_CurrentStage) {
-			case ON:
-			case OFF:
-				length = SERVER_CONNECTING_LENGTH;
-				break;
-			case GAP:
-				length = DEFAULT_GAP;
-				break;
-			case INTERVAL:
-				length = SERVER_CONNECTING_INTERVAL;
-				break;
-		}
+	if (networkConnection.isConnected()) {
+		on();
 	} else {
-#if defined(LED_INTERVAL_STANDBY) && LED_INTERVAL_STANDBY > 0
-		count = 1;
-		switch (m_CurrentStage) {
-			case ON:
-			case OFF:
-				length = STANDBUY_LENGTH;
-				break;
-			case GAP:
-				length = DEFAULT_GAP;
-				break;
-			case INTERVAL:
-				length = LED_INTERVAL_STANDBY;
-				break;
-		}
-#else
-		return;
-#endif
-	}
-
-	if (m_CurrentStage == OFF || m_Timer + diff >= length) {
-		m_Timer = 0;
-		// Advance stage
-		switch (m_CurrentStage) {
-			case OFF:
-				on();
-				m_CurrentStage = ON;
-				m_CurrentCount = 0;
-				break;
-			case ON:
-				off();
-				m_CurrentCount++;
-				if (m_CurrentCount >= count) {
-					m_CurrentCount = 0;
-					m_CurrentStage = INTERVAL;
-				} else {
-					m_CurrentStage = GAP;
-				}
-				break;
-			case GAP:
-			case INTERVAL:
-				on();
-				m_CurrentStage = ON;
-				break;
-		}
-	} else {
-		m_Timer += diff;
+		off();
 	}
 }
 }  // namespace SlimeVR

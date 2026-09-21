@@ -452,6 +452,11 @@ void VQF::setMagRef(vqf_real_t norm, vqf_real_t dip)
     state.magRefDip = dip;
 }
 
+void VQF::setDelta(vqf_real_t delta)
+{
+    state.delta = delta;
+}
+
 #ifndef VQF_NO_MOTION_BIAS_ESTIMATION
 void VQF::setMotionBiasEstEnabled(bool enabled)
 {
@@ -899,7 +904,15 @@ void VQF::setup()
 }
 
 void VQF::updateBiasForgettingTime(float biasForgettingTime) {
-    coeffs.biasV = square(0.1*100.0)*coeffs.accTs/params.biasForgettingTime;
+    // The argument used to be ignored, which made every caller a no-op. It is
+    // derived from a temperature gradient, so it can arrive as zero, negative or
+    // non-finite, and the coefficients below divide by it.
+    if (!isfinite(biasForgettingTime) || biasForgettingTime <= 0.0f) {
+        biasForgettingTime = params.biasForgettingTime;
+    }
+    params.biasForgettingTime = biasForgettingTime;
+
+    coeffs.biasV = square(0.1*100.0)*coeffs.accTs/biasForgettingTime;
 
 #ifndef VQF_NO_MOTION_BIAS_ESTIMATION
     vqf_real_t pMotion = square(params.biasSigmaMotion*100.0);

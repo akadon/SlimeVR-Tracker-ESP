@@ -49,6 +49,12 @@ std::vector<MagDefinition> MagDriver::supportedMags{
 				);  // LP filter 2, 8x Oversampling, normal mode
 				return true;
 			},
+
+		.deinit =
+			[](MagInterface& interface) {
+				interface.writeByte(0x0b, 0x80);
+				interface.writeByte(0x0b, 0x00);  // Soft reset
+			},
 	},
 	MagDefinition{
 		.name = "IST8306",
@@ -63,12 +69,29 @@ std::vector<MagDefinition> MagDriver::supportedMags{
 
 		.setup =
 			[](MagInterface& interface) {
+				interface.writeByte(0x20, 0x00);  // Make sure suspend is off
+				delay(4);
 				interface.writeByte(0x32, 0x01);  // Soft reset
 				delay(50);
 				interface.writeByte(0x30, 0x20);  // Noise suppression: low
 				interface.writeByte(0x41, 0x2d);  // Oversampling: 32X
-				interface.writeByte(0x31, 0x02);  // Continuous measurement @ 10Hz
+				// 20 Hz, not the 10 Hz this used to ask for. The fusion does not
+				// use the sample it is handed for what it was measured at; it uses
+				// it as a statement about the heading *now*, so the age of the
+				// reading is an error of the rotation that happened while it sat
+				// in the output register -- on average half a period, which at
+				// 10 Hz is 50 ms, or 5 deg of a 100 deg/s turn fed straight back
+				// as heading error. 20 Hz halves that. It costs nothing: the aux
+				// poll has always run faster than the chip and threw half its
+				// reads away as duplicates, so the extra samples are already
+				// being fetched. ICM45Base::MagTs has to match this rate.
+				interface.writeByte(0x31, 0x04);  // Continuous measurement @ 20Hz
 				return true;
+			},
+
+		.deinit =
+			[](MagInterface& interface) {
+				interface.writeByte(0x20, 0x02);  // Suspend
 			},
 	},
 };
@@ -103,6 +126,14 @@ bool MagDriver::init(MagInterface&& interface, bool supports9ByteMags) {
 
 	this->interface = interface;
 	return detectedMag.has_value();
+}
+
+void MagDriver::deinit() {
+	if (!detectedMag) {
+		return;
+	}
+
+	detectedMag->deinit(interface);
 }
 
 void MagDriver::startPolling() const {

@@ -46,6 +46,13 @@ namespace SlimeVR::Network {
 	if (!(b))   \
 		return;
 
+// Server discovery is a broadcast, so it wakes every tracker on the network.
+// Retrying at a flat 1 Hz forever keeps the radio busy for no reason once the
+// first few attempts have failed, so the interval doubles up to the maximum and
+// is reset on a successful handshake.
+#define DISCOVERY_MIN_INTERVAL 1000UL
+#define DISCOVERY_MAX_INTERVAL 8000UL
+
 class Connection {
 public:
 	Connection() {
@@ -219,13 +226,21 @@ private:
 	SlimeVR::Logging::Logger m_Logger = SlimeVR::Logging::Logger("UDPConnection");
 
 	WiFiUDP m_UDP;
-	unsigned char m_Packet[128];  // buffer for incoming packets
+	// Incoming packets, and the staging buffer for one inner packet while a
+	// bundle is being assembled (each sensor's sendData() gets its own inner
+	// packet, so this never holds a whole bundle).
+	unsigned char m_Packet[128];
 	uint64_t m_PacketNumber = 0;
 
 	int m_ServerPort = 6969;
 	IPAddress m_ServerHost = IPAddress(255, 255, 255, 255);
 	unsigned long m_LastConnectionAttemptTimestamp;
 	unsigned long m_LastPacketTimestamp;
+	// Server discovery is a broadcast, so it wakes every tracker on the network.
+	// Retrying at a flat 1 Hz forever keeps the radio busy for no reason once the
+	// first few attempts have failed, so this interval doubles up to the maximum
+	// and is reset on a successful handshake.
+	unsigned long m_DiscoveryInterval = DISCOVERY_MIN_INTERVAL;
 
 	SensorStatus m_AckedSensorState[MAX_SENSORS_COUNT] = {SensorStatus::SENSOR_OFFLINE};
 	SlimeVR::Configuration::SensorConfigBits m_AckedSensorConfigData[MAX_SENSORS_COUNT]

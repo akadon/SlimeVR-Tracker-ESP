@@ -98,7 +98,35 @@ struct RuntimeCalibrationSensorConfig {
 
 	bool accelCalibrated[3];
 	float A_off[3];
+
+	// Magnetometer hard-iron offset, in raw counts, in the IMU frame -- the same
+	// frame and units as the driver's MagHardIron constant, i.e. remapped and
+	// signed but before the subtraction. magCalibrated false means the driver's
+	// compiled-in default is still in use.
+	//
+	// That default is one chip's offset applied to every board, and the offsets
+	// are not close: two trackers a metre apart report fields of 381 and 224
+	// counts, and the second one's earth-frame dip comes out at +5 degrees where
+	// the real one is -68. A wrong offset is subtracted in the body frame, so it
+	// rotates with the tracker and tilts the field direction by an amount that
+	// depends on orientation -- which is what trips VQF's disturbance rejection
+	// and, when it lasts, makes the filter adopt the distorted field as its new
+	// reference and hold a heading that is wrong by over a hundred degrees.
+	//
+	// Written from the host with `SET MAGOFF`, fitted from a rotation capture.
+	bool magCalibrated;
+	float M_off[3];
 };
+
+// The magnetometer fields above must not grow this struct past the union's
+// largest member: loadSensors() rejects any calibration file whose size is not
+// sizeof(SensorConfig), so growing the union silently discards every stored
+// calibration on the next boot.
+static_assert(
+	sizeof(RuntimeCalibrationSensorConfig) <= sizeof(SoftFusionSensorConfig),
+	"RuntimeCalibrationSensorConfig grew past SoftFusionSensorConfig, which "
+	"changes sizeof(SensorConfig) and invalidates every stored calibration"
+);
 
 struct MPU6050SensorConfig {
 	// accelerometer offsets and correction matrix

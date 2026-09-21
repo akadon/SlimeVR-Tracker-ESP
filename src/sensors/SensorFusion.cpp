@@ -44,6 +44,10 @@ void SensorFusion::updateMag(const sensor_real_t Mxyz[3], sensor_real_t deltat) 
 		}
 	}
 
+	for (int i = 0; i < 3; i++) {
+		lastMag[i] = Mxyz[i];
+	}
+
 	vqf.updateMag(Mxyz);
 }
 
@@ -130,5 +134,56 @@ void SensorFusion::updateBiasForgettingTime(float biasForgettingTime) {
 }
 
 bool SensorFusion::getRestDetected() const { return vqf.getRestDetected(); }
+
+bool SensorFusion::getMagDistDetected() const { return vqf.getMagDistDetected(); }
+
+sensor_real_t SensorFusion::getMagRefNorm() const { return vqf.getMagRefNorm(); }
+
+sensor_real_t SensorFusion::getMagRefDip() const { return vqf.getMagRefDip(); }
+
+sensor_real_t SensorFusion::getDelta() const { return vqf.getDelta(); }
+
+void SensorFusion::getBiasEstimate(sensor_real_t out[3]) const {
+	vqf.getBiasEstimate(out);
+}
+
+void SensorFusion::getRelativeRestDeviations(sensor_real_t out[2]) const {
+	vqf.getRelativeRestDeviations(out);
+}
+
+void SensorFusion::disableMag() { magExist = false; }
+
+bool SensorFusion::seedMagRef() {
+	if (!magExist) {
+		return false;
+	}
+
+	sensor_real_t q6[4];
+	vqf.getQuat6D(q6);
+
+	// VQF's reference is stored as the norm of the field and its dip angle, both
+	// measured in the earth frame, which is the same frame its own disturbance
+	// detection compares against.
+	sensor_real_t magEarth[3];
+	VQF::quatRotate(q6, lastMag, magEarth);
+
+	sensor_real_t fieldNorm = VQF::norm(magEarth, 3);
+	if (fieldNorm <= 0.0f) {
+		return false;
+	}
+
+	vqf.setMagRef(fieldNorm, -asin(magEarth[2] / fieldNorm));
+
+	// updateMag drives delta towards the angle this same field vector implies, but
+	// only with a time constant of tauMag (9 s), so adopting the reference on its
+	// own leaves the heading creeping for the best part of a minute afterwards --
+	// which shows up as a tracker that will not stay where it was zeroed. Placing
+	// delta on the equilibrium right away makes the heading hold from the first
+	// sample. Drift correction is unaffected: the equilibrium is where the measured
+	// field heading and delta agree, so a gyro error rotates the measurement away
+	// from it and delta follows again.
+	vqf.setDelta(atan2(magEarth[0], magEarth[1]));
+	return true;
+}
 
 }  // namespace SlimeVR::Sensors

@@ -831,6 +831,17 @@ public:
 	 * @param dip dip angle of the magnetic field reference
 	 */
 	void setMagRef(vqf_real_t norm, vqf_real_t dip);
+	/**
+	 * @brief Overwrites the current heading difference \f$\delta\f$.
+	 *
+	 * Setting this to the disagreement angle implied by the current measurement,
+	 * i.e. \f$\operatorname{atan2}(m^\mathcal{E}_x, m^\mathcal{E}_y)\f$, places the
+	 * heading filter exactly on its equilibrium. It then holds that heading instead
+	 * of converging to it over VQFParams::tauMag. See VQFState::delta.
+	 *
+	 * @param delta heading difference in rad
+	 */
+	void setDelta(vqf_real_t delta);
 
 	/**
 	 * @brief Sets the time constant for accelerometer low-pass filtering.

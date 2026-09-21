@@ -58,11 +58,13 @@ struct IMUConsts {
 	}
 
 	static constexpr bool SupportsMags = requires(IMU& i) { i.readAux(0x00); };
+	// Defaults to false: readAuxBurst only reads up to six bytes per axis pair, so an
+	// IMU that does not explicitly opt in must not select a nine byte mag.
 	static constexpr bool Supports9ByteMag = []() constexpr {
 		if constexpr (requires { IMU::Supports9ByteMag; }) {
 			return IMU::Supports9ByteMag;
 		} else {
-			return true;
+			return false;
 		}
 	}();
 };

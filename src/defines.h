@@ -27,16 +27,22 @@
 
 // Set parameters of IMU and board used
 #ifndef IMU
-#define IMU IMU_AUTO
+#define IMU IMU_ICM45686
 #endif
 #ifndef SECOND_IMU
-#define SECOND_IMU IMU_AUTO
+#define SECOND_IMU IMU
 #endif
 #ifndef BOARD
-#define BOARD BOARD_SLIMEVR_V1_2
+#define BOARD BOARD_CUSTOM
 #endif
 #ifndef IMU_ROTATION
 #define IMU_ROTATION DEG_270
+#endif
+// Axis IMU_ROTATION turns about, as x, y, z. Z (the default) is a yaw trim,
+// which is all a correctly seated IMU ever needs. A unit whose IMU sits flipped
+// on the board instead reads tilt inverted, and needs 1,0,0 or 0,1,0 here.
+#ifndef IMU_ROTATION_AXIS
+#define IMU_ROTATION_AXIS 0, 0, 1
 #endif
 #ifndef SECOND_IMU_ROTATION
 #define SECOND_IMU_ROTATION DEG_270
@@ -63,16 +69,37 @@
 #endif
 
 // --- OVERRIDES FOR DEFAULT PINS
+// Single IMU tracker, so only one sensor descriptor is used
+#define SENSOR_DESC_LIST                       \
+	SENSOR_DESC_ENTRY(                         \
+		IMU,                                   \
+		PRIMARY_IMU_ADDRESS_ONE,               \
+		IMU_ROTATION,                          \
+		DIRECT_WIRE(PIN_IMU_SCL, PIN_IMU_SDA), \
+		PRIMARY_IMU_OPTIONAL,                  \
+		DIRECT_PIN(PIN_IMU_INT),               \
+		0                                      \
+	)
 
-// #define PIN_IMU_SDA 14
-// #define PIN_IMU_SCL 12
-// #define PIN_IMU_INT 16
-// #define PIN_IMU_INT_2 13
-// #define PIN_BATTERY_LEVEL 17
-// #define LED_PIN 2
-// #define LED_INVERTED true
-// #define BATTERY_SHIELD_RESISTANCE 0
-// #define BATTERY_SHIELD_R1 10
-// #define BATTERY_SHIELD_R2 40.2
+// --- ON/OFF BUTTON
+// Active-low button, with a separately switched IMU rail. Clicking it powers the
+// tracker on; it powers itself back off once SlimeVR has been gone this long.
+#define ON_OFF_BUTTON_PIN 1
+#define BUTTON_ACTIVE_LEVEL 0
+#define BUTTON_IMU_ENABLE_PIN 10
+#define BUTTON_IMU_ENABLE_ACTIVE_LEVEL 1
+#define BUTTON_DISCONNECT_SLEEP_SECONDS (10 * 60)
+
+#define PIN_IMU_SDA 5
+#define PIN_IMU_SCL 6
+#define PIN_IMU_INT 255
+#define PIN_IMU_INT_2 255
+#define PIN_BATTERY_LEVEL 3
+#define LED_PIN 0
+#define LED_INVERTED true
+
+#define BATTERY_SHIELD_RESISTANCE 0
+#define BATTERY_SHIELD_R1 150
+#define BATTERY_SHIELD_R2 150
 
 // ------------------------------

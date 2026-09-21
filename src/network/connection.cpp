@@ -23,13 +23,18 @@
 
 #include "connection.h"
 
+#include <algorithm>
 #include <string_view>
 
 #include "GlobalVars.h"
 #include "logging/Logger.h"
 #include "packets.h"
 
-#define TIMEOUT 3000UL
+// How long the server may go silent before the session is torn down. The server
+// heartbeats about once a second, so this is several missed beats; it was 3000,
+// which is only three, and with modem sleep enabled a single delayed burst can
+// eat that and drop a connection that is actually fine.
+#define TIMEOUT 5000UL
 
 template <typename T>
 uint8_t* convert_to_chars(T src, uint8_t* target) {
@@ -113,6 +118,14 @@ bool Connection::endBundle() {
 size_t Connection::write(const uint8_t* buffer, size_t size) {
 	if (m_IsBundle) {
 		if (m_BundlePacketPosition + size > sizeof(m_Packet)) {
+			// Silently returning 0 here would leave the inner packet half
+			// written, and the caller has no way to tell. Say so instead.
+			m_Logger.error(
+				"Bundle inner packet overflow: %u + %u > %u, packet dropped",
+				static_cast<unsigned>(m_BundlePacketPosition),
+				static_cast<unsigned>(size),
+				static_cast<unsigned>(sizeof(m_Packet))
+			);
 			return 0;
 		}
 		memcpy(m_Packet + m_BundlePacketPosition, buffer, size);
@@ -557,6 +570,22 @@ void Connection::searchForServer() {
 			break;
 		}
 
+#ifdef ESP32
+		if (packetSize > sizeof(m_Packet)) {
+			// ESP32 seemingly gets stuck when the packet is bigger than the buffer
+			// it has. This only happens with packets not meant for it being
+			// incidentally received. For compatibility we ignore these and flush
+			// the UDP buffer.
+			while (packetSize > 0) {
+				packetSize -= m_UDP.read(
+					m_Packet,
+					std::min(sizeof(m_Packet), static_cast<size_t>(packetSize))
+				);
+			}
+			continue;
+		}
+#endif
+
 		// receive incoming UDP packets
 		[[maybe_unused]] int len = m_UDP.read(m_Packet, sizeof(m_Packet));
 
@@ -583,6 +612,8 @@ void Connection::searchForServer() {
 			m_ServerPort = m_UDP.remotePort();
 			m_LastPacketTimestamp = millis();
 			m_Connected = true;
+			// Back to the fast retry, so a later disconnect is picked up quickly.
+			m_DiscoveryInterval = DISCOVERY_MIN_INTERVAL;
 
 			m_FeatureFlagsRequestAttempts = 0;
 			m_ServerFeatures = ServerFeatures{};
@@ -601,8 +632,10 @@ void Connection::searchForServer() {
 
 	auto now = millis();
 
-	if (m_LastConnectionAttemptTimestamp + 1000 < now) {
+	if (m_LastConnectionAttemptTimestamp + m_DiscoveryInterval < now) {
 		m_LastConnectionAttemptTimestamp = now;
+		m_DiscoveryInterval
+			= std::min(DISCOVERY_MAX_INTERVAL, m_DiscoveryInterval * 2);
 		m_Logger.info("Searching for the server on the local network...");
 		Connection::sendTrackerDiscovery();
 	}
@@ -671,6 +704,21 @@ void Connection::update() {
 	if (!packetSize) {
 		return;
 	}
+
+#ifdef ESP32
+	if (packetSize > sizeof(m_Packet)) {
+		// ESP32 seemingly gets stuck when the packet is bigger than the buffer it
+		// has. This only happens with packets not meant for it being incidentally
+		// received. For compatibility we ignore these and flush the UDP buffer.
+		while (packetSize > 0) {
+			packetSize -= m_UDP.read(
+				m_Packet,
+				std::min(sizeof(m_Packet), static_cast<size_t>(packetSize))
+			);
+		}
+		return;
+	}
+#endif
 
 	int len = m_UDP.read(m_Packet, sizeof(m_Packet));
 

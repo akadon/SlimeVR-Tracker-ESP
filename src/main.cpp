@@ -26,6 +26,7 @@
 #include "GlobalVars.h"
 #include "Wire.h"
 #include "batterymonitor.h"
+#include "button.h"
 #include "credentials.h"
 #include "debugging/Benchmark.h"
 #include "globals.h"
@@ -33,6 +34,7 @@
 #include "logging/SerialBuffer.h"
 #include "ota.h"
 #include "preinit.h"
+#include "sensors/MagCalibrationMode.h"
 #include "serial/serialcommands.h"
 #include "status/TPSCounter.h"
 
@@ -53,6 +55,7 @@ SlimeVR::Debugging::Benchmark serialCommandsBM{"SerialCommands::update()"};
 SlimeVR::Debugging::Benchmark otaBM{"OTA::otaUpdate()"};
 SlimeVR::Debugging::Benchmark networkManagerBM{"networkManager.update()"};
 SlimeVR::Debugging::Benchmark sensorManagerBM{"sensorManager.update()"};
+SlimeVR::Debugging::Benchmark magCalibrationBM{"MagCalibrationMode::tick()"};
 SlimeVR::Debugging::Benchmark batteryBM{"battery.Loop()"};
 SlimeVR::Debugging::Benchmark ledManagerBM{"ledManager.update()"};
 SlimeVR::Debugging::Benchmark i2cScanBM{"I2CSCAN::update()"};
@@ -78,6 +81,16 @@ void setup() {
 	Serial.println();
 	Serial.println();
 	Serial.println();
+
+#ifdef ON_OFF_BUTTON_PIN
+	OnOffButton::getInstance().setup();
+	OnOffButton::getInstance().onBeforeSleep([]() { sensorManager.deinitAll(); });
+	// Holding the button runs the magnetometer calibration on the tracker
+	// itself, so it does not need a console and a set of typed commands.
+	OnOffButton::getInstance().onHold([]() {
+		SlimeVR::MagCalibrationMode::getInstance().toggle();
+	});
+#endif
 
 	logger.info("SlimeVR v" FIRMWARE_VERSION " starting up...");
 
@@ -192,6 +205,12 @@ void loop() {
 	sensorManager.update();
 	sensorManagerBM.after();
 
+	// After the sensors, so the fit it watches is this loop's; before the LED
+	// manager, which leaves the LED alone while a calibration owns it.
+	magCalibrationBM.before();
+	SlimeVR::MagCalibrationMode::getInstance().tick();
+	magCalibrationBM.after();
+
 	batteryBM.before();
 	battery.Loop();
 	batteryBM.after();
@@ -203,6 +222,14 @@ void loop() {
 	i2cScanBM.before();
 	I2CSCAN::update();
 	i2cScanBM.after();
+
+#ifdef ON_OFF_BUTTON_PIN
+	if (networkConnection.isConnected()) {
+		OnOffButton::getInstance().signalTrackerConnected();
+	}
+
+	OnOffButton::getInstance().tick();
+#endif
 
 #if defined(PRINT_STATE_EVERY_MS) && PRINT_STATE_EVERY_MS > 0
 	printStateBM.before();

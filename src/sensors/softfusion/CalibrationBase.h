@@ -95,6 +95,27 @@ public:
 
 	virtual float getZROChange() { return IMU::TemperatureZROChange; };
 
+	// Per-unit magnetometer hard-iron offset, in raw counts, in the IMU frame the
+	// driver applies it in. Returns false when this sensor has none stored, which
+	// leaves the driver on its compiled-in default. The default is not returned
+	// here because the axis mapping it is expressed in lives with the driver.
+	virtual bool getMagOffset(float out[3]) { return false; }
+
+	// Puts a per-unit offset into use now, without waiting for the reboot the
+	// stored one needs. Used by the automatic fit, which runs while the tracker is
+	// being worn and has no way to restart.
+	virtual void setMagOffset(const float offset[3]) { (void)offset; }
+
+	// Back to the compiled-in default, now rather than at the next boot.
+	virtual void clearMagOffset() {}
+
+	// Bias currently subtracted from the gyro stream, in raw counts. Diagnostic.
+	virtual void getAppliedGyroBias(float out[3]) const {
+		out[0] = 0.0f;
+		out[1] = 0.0f;
+		out[2] = 0.0f;
+	}
+
 protected:
 	void recalcFusion() {
 		fusion = Sensors::SensorFusion(
