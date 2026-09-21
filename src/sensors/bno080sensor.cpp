@@ -382,6 +382,10 @@ void BNO080Sensor::startCalibration(int calibrationType) {
 	// that is disabled 30 seconds after startup
 }
 
+void BNO080Sensor::deinit() { imu.softReset(); }
+
+bool BNO080Sensor::isAtRest() { return imu.getStabilityClassifier() == 1; }
+
 bool BNO080Sensor::isFlagSupported(SensorToggles toggle) const {
 	return toggle == SensorToggles::MagEnabled;
 }

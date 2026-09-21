@@ -155,6 +155,17 @@ void Configuration::wifiReset() {
 }
 
 void Configuration::save() {
+	// LittleFS::open(path, "w") does not create missing parent directories, so a
+	// save that runs with sensors loaded but without these two on flash drops
+	// every per-sensor write below, including the toggle state the server's
+	// magnetometer flag lives in. The loader mostly covers itself: the
+	// Utils::forEachFile() calls in loadSensors() each ensureDirectory() their
+	// directory before iterating it, so by the time sensors exist both are there.
+	// These are for the saves that run without a preceding load -- the one
+	// setup() makes when /config.bin is missing, and the one after a format.
+	SlimeVR::Utils::ensureDirectory(DIR_CALIBRATIONS);
+	SlimeVR::Utils::ensureDirectory(DIR_TOGGLES);
+
 	for (size_t i = 0; i < m_Sensors.size(); i++) {
 		SensorConfig config = m_Sensors[i];
 		if (config.type == SensorConfigType::NONE) {
@@ -199,8 +210,11 @@ void Configuration::save() {
 		char* end = path + strlen(DIR_TOGGLES_OLD);
 		Utils::forEachFile(DIR_TOGGLES_OLD, [&](SlimeVR::Utils::File file) {
 			sprintf(end, "/%s", file.name());
-			LittleFS.remove(path);
+			// Close before unlinking: LittleFS refuses to remove a path that
+			// still has an open file descriptor, so removing first left the
+			// legacy directory on flash and logged an error on every save.
 			file.close();
+			LittleFS.remove(path);
 		});
 		LittleFS.rmdir(DIR_TOGGLES_OLD);
 	}

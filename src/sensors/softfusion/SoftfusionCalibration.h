@@ -270,7 +270,9 @@ private:
 			GyroCalibDelaySeconds
 		);
 		ledManager.on();
-		auto lastSamples = eatSamplesReturnLast(GyroCalibDelaySeconds);
+		// eatSamplesReturnLast takes milliseconds, and GyroCalibDelaySeconds is the
+		// "5 seconds" the message above promises; without the scaling this waited 5 ms.
+		auto lastSamples = eatSamplesReturnLast(GyroCalibDelaySeconds * 1000);
 		ledManager.off();
 
 		calibration.temperature = std::get<2>(lastSamples) / IMU::TemperatureSensitivity

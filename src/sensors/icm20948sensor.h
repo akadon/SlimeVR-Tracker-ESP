@@ -56,6 +56,7 @@ public:
 	void motionLoop() override final;
 	void sendData() override final;
 	void startCalibration(int calibrationType) override final;
+	void deinit() final;
 
 private:
 	void calculateAccelerationWithoutGravity(Quat* quaternion);

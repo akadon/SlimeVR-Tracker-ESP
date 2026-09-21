@@ -41,6 +41,9 @@ private:
 
 	static constexpr float AveragingTimeSeconds = 5.0f;
 	float tempSum = 0;
-	uint64_t lastAverageSentMillis = millis();
+	// Matches the width of millis(); a 64 bit deadline here never becomes smaller
+	// than the wrapped millis() again, which stopped the callback firing entirely
+	// after roughly 49.7 days of uptime.
+	uint32_t lastAverageSentMillis = millis();
 	float lastTempAverage = 0;
 };

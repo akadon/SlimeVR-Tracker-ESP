@@ -28,26 +28,7 @@
 #include "../globals.h"
 #include "../logging/Logger.h"
 
-#define DEFAULT_LENGTH 300
-#define DEFAULT_GAP 500
-#define DEFAULT_INTERVAL 3000
-
-#define STANDBUY_LENGTH DEFAULT_LENGTH
-#define IMU_ERROR_LENGTH DEFAULT_LENGTH
-#define IMU_ERROR_INTERVAL 1000
-#define IMU_ERROR_COUNT 5
-#define LOW_BATTERY_LENGTH DEFAULT_LENGTH
-#define LOW_BATTERY_INTERVAL 300
-#define LOW_BATTERY_COUNT 1
-#define WIFI_CONNECTING_LENGTH DEFAULT_LENGTH
-#define WIFI_CONNECTING_INTERVAL 3000
-#define WIFI_CONNECTING_COUNT 3
-#define SERVER_CONNECTING_LENGTH 20
-#define SERVER_CONNECTING_INTERVAL 980
-#define SERVER_CONNECTING_COUNT 1
-
 namespace SlimeVR {
-enum LEDStage { OFF, ON, GAP, INTERVAL };
 
 class LEDManager {
 public:
@@ -77,18 +58,26 @@ public:
 	 */
 	void pattern(unsigned long timeon, unsigned long timeoff, int times);
 
+	/*!
+	 *  @brief Drives the LED from the connection state: lit for as long as
+	 *  SlimeVR is connected, dark at every other moment.
+	 */
 	void update();
 
-private:
-	uint8_t m_CurrentCount = 0;
-	unsigned long m_Timer = 0;
-	LEDStage m_CurrentStage = OFF;
-	unsigned long m_LastUpdate = millis();
+	/*!
+	 *  @brief Hands the LED to a routine that drives it through on()/off().
+	 *  While owned, update() leaves the LED alone rather than repainting it
+	 *  from the connection state on every loop, which is what a routine that
+	 *  runs across many loops instead of blocking needs.
+	 */
+	void setOwned(bool owned);
 
+private:
 	uint8_t m_Pin = LED_PIN;
 	bool m_Enabled = m_Pin >= 0 && m_Pin < LED_OFF;
 	bool m_On = LED_INVERTED ? LOW : HIGH;
 	bool m_Off = !m_On;
+	bool m_Owned = false;
 
 	Logging::Logger m_Logger = Logging::Logger("LEDManager");
 };

@@ -101,6 +101,13 @@ void WiFiNetwork::setUp() {
 	} else {
 		wifiHandlerLogger.error("Unable to get WiFi config, power saving not enabled!");
 	}
+#elif POWERSAVING_MODE == POWER_SAVING_LEGACY
+	// POWER_SAVING_LEGACY is "No sleeping, but PS enabled", and it is the default
+	// in debug.h -- but it had no branch here, so nothing was ever called and the
+	// tracker silently ran on whatever arduino-esp32 defaults to. That happens to
+	// be WIFI_PS_MIN_MODEM today, so it matches the documented intent; asking for
+	// it explicitly keeps the mode meaning what it says if that default changes.
+	WiFi.setSleep(WIFI_PS_MIN_MODEM);
 #endif
 #endif
 }

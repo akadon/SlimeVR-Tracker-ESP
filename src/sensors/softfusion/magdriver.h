@@ -56,14 +56,28 @@ struct MagDefinition {
 	uint8_t dataReg;
 
 	std::function<bool(MagInterface& interface)> setup;
+
+	std::function<void(MagInterface& interface)> deinit;
 };
 
 class MagDriver {
 public:
 	bool init(MagInterface&& interface, bool supports9ByteMags);
+	void deinit();
 	void startPolling() const;
 	void stopPolling() const;
 	[[nodiscard]] const char* getAttachedMagName() const;
+
+	// Geometry of the detected magnetometer. The sensor reads the mag's data
+	// registers itself rather than relying on the IMU's hardware aux streaming,
+	// so it needs to know where the sample lives and how wide it is.
+	[[nodiscard]] bool hasMag() const { return detectedMag.has_value(); }
+	[[nodiscard]] uint8_t getDataReg() const {
+		return detectedMag ? detectedMag->dataReg : 0;
+	}
+	[[nodiscard]] MagDataWidth getDataWidth() const {
+		return detectedMag ? detectedMag->dataWidth : MagDataWidth::SixByte;
+	}
 
 private:
 	std::optional<MagDefinition> detectedMag;

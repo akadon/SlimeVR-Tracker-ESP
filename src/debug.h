@@ -61,9 +61,23 @@
 
 // Sleeping options
 #define POWERSAVING_MODE POWER_SAVING_LEGACY  // Minimum causes sporadic data pauses
-#if POWERSAVING_MODE >= POWER_SAVING_MINIMUM
+
+// Loop pacing, deliberately independent of POWERSAVING_MODE.
+//
+// This used to be guarded by `POWERSAVING_MODE >= POWER_SAVING_MINIMUM`, which
+// excludes both POWER_SAVING_LEGACY (the default above) and POWER_SAVING_NONE.
+// So in the shipped configuration TARGET_LOOPTIME_MICROS was never defined, the
+// pacing block in main.cpp compiled out, and loop() free-ran -- and no single
+// POWER_SAVING_* value gave both "no modem sleep" and a paced loop.
+//
+// Free-running matters here because every iteration calls parsePacket() at least
+// twice -- once draining the socket in Connection::searchForServer(), once in
+// the main poll -- and arduino-esp32 allocates a fresh ~1460 byte buffer inside
+// each call. At free-run rates that is a lot of heap churn for nothing.
+//
+// Pacing to samplingRateInMillis matches what the sensor path already targets
+// (100 Hz), so nothing downstream has to change to keep up.
 #define TARGET_LOOPTIME_MICROS (samplingRateInMillis * 1000)
-#endif
 
 // Packet bundling/aggregation
 #define PACKET_BUNDLING PACKET_BUNDLING_BUFFERED

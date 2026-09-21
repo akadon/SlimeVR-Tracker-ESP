@@ -44,7 +44,14 @@ struct ICM45Base {
 	static constexpr float AccTs = 1.0 / 102.4;
 	static constexpr float TempTs = 1.0 / 409.6;
 
-	static constexpr float MagTs = 1.0 / 100;
+	// The IST8306 is configured for continuous measurement at 20 Hz (its setup
+	// sequence in magdriver.cpp writes 0x04 to CTRL2), so the magnetometer
+	// timestep handed to VQF has to match that: kMag is one minus the exponential
+	// of magTs/tauMag, and half the timestep would apply each correction at half
+	// the gain it was designed for. This previously claimed 100 Hz, which would
+	// have had VQF integrate every heading correction ten times too fast --
+	// harmless only because no mag sample ever reached it.
+	static constexpr float MagTs = 1.0 / 20;
 
 	static constexpr float GyroSensitivity = 131.072f;
 	static constexpr float AccelSensitivity = 16384.0f;
@@ -53,6 +60,20 @@ struct ICM45Base {
 	static constexpr float TemperatureSensitivity = 128.0f;
 
 	static constexpr float TemperatureZROChange = 20.0f;
+
+	// The magnetometer hangs off the IMU's aux pins, so reaching it normally means
+	// driving the IMU's own I2C master through indirect banked registers: ten
+	// indirect accesses per poll, each one a separate I2C transaction to the IMU.
+	// The same pins can instead be bridged onto the tracker's own bus, which makes
+	// the mag an ordinary device on it and turns the poll into one read. That is
+	// what the flag asks for; m_auxPassThrough is what was actually possible once
+	// initializeBase asked the register interface what kind of host bus this is.
+	static constexpr bool PreferAuxPassThrough = true;
+	bool m_auxPassThrough = false;
+	// Slave address given by MagDriver::init through setAuxId. In pass-through it
+	// travels with every host transaction; without it the IMU's DEV_PROFILE
+	// register holds it and it is not needed here.
+	uint8_t m_auxId = 0;
 
 	RegisterInterface& m_RegisterInterface;
 	SlimeVR::Logging::Logger& m_Logger;
@@ -125,10 +146,17 @@ struct ICM45Base {
 
 		struct IOCPadScenarioAuxOvrd {
 			static constexpr uint8_t reg = 0x30;
+			// Bits 3:2 say what drives the aux pins: 1 leaves them to the IMU's own
+			// I2C master, 2 bridges them straight onto the host bus.
 			static constexpr uint8_t value = (0b1 << 4)  // Enable AUX1 override
-										   | (0b01 << 2)  // Enable I2CM master
+										   | (0b01 << 2)  // Aux pins to the I2C master
 										   | (0b1 << 1)  // Enable AUX1 enable override
 										   | (0b1 << 0);  // Enable AUX1
+			static constexpr uint8_t valuePassThrough
+				= (0b1 << 4)  // Enable AUX1 override
+				| (0b10 << 2)  // Aux pins bridged to the host bus
+				| (0b1 << 1)  // Enable AUX1 enable override
+				| (0b1 << 0);  // Enable AUX1
 		};
 
 		struct I2CMCommand0 {
@@ -151,6 +179,11 @@ struct ICM45Base {
 			static constexpr uint8_t reg = 0x33;
 		};
 
+		struct I2CMWrData1 {
+			static constexpr Bank bank = Bank::IPregTop1;
+			static constexpr uint8_t reg = 0x34;
+		};
+
 		struct I2CMRdData0 {
 			static constexpr Bank bank = Bank::IPregTop1;
 			static constexpr uint8_t reg = 0x1b;
@@ -168,7 +201,6 @@ struct ICM45Base {
 		struct I2CMStatus {
 			static constexpr Bank bank = Bank::IPregTop1;
 			static constexpr uint8_t reg = 0x18;
-
 			static constexpr uint8_t SDAErr = 0b1 << 5;
 			static constexpr uint8_t SCLErr = 0b1 << 4;
 			static constexpr uint8_t SRSTErr = 0b1 << 3;
@@ -221,9 +253,23 @@ struct ICM45Base {
 			BaseRegs::PwrMgmt0::value
 		);
 
+		// Pass-through needs a host bus to bridge the aux pins onto, so it is only
+		// available when the host interface is I2C: an SPI-hosted IMU would lose
+		// the magnetometer instead of gaining a cheaper read.
+		m_auxPassThrough = PreferAuxPassThrough && hostInterfaceIsI2C();
 		m_RegisterInterface.writeReg(
 			BaseRegs::IOCPadScenarioAuxOvrd::reg,
-			BaseRegs::IOCPadScenarioAuxOvrd::value
+			m_auxPassThrough ? BaseRegs::IOCPadScenarioAuxOvrd::valuePassThrough
+							 : BaseRegs::IOCPadScenarioAuxOvrd::value
+		);
+		// Says which of the two aux transports is live. Both produce working mag
+		// reads, and nothing else on the device reports which one is in use --
+		// the difference only shows in the poll cost and in whether the pass-
+		// through-only registers (0x31, 0x41) hold what was written.
+		m_Logger.info(
+			"IMU %s: aux pins %s",
+			m_RegisterInterface.toString().c_str(),
+			m_auxPassThrough ? "bridged onto the host bus" : "driven by the IMU's own master"
 		);
 
 		read_buffer.resize(FullFifoEntrySize * MaxReadings);
@@ -362,18 +408,116 @@ struct ICM45Base {
 		writeBankRegister<Reg>(&value, sizeof(value));
 	}
 
+	// I2CImpl names itself "I2C(0x68)" and SPIImpl "SPI". This only decides which
+	// way the aux pins are driven, so a string check costs nothing once at init
+	// and does not need RTTI to be enabled.
+	bool hostInterfaceIsI2C() const {
+		return m_RegisterInterface.toString().rfind("I2C", 0) == 0;
+	}
+
 	void setAuxId(uint8_t deviceId) {
-		writeBankRegister<typename BaseRegs::I2CMDevProfile1>(deviceId);
+		// The aux master reads the address out of DEV_PROFILE1 before every
+		// transaction; pass-through has no such state, because the mag is just
+		// another device on the host bus and the address goes in each transaction.
+		m_auxId = deviceId;
+		if (!m_auxPassThrough) {
+			writeBankRegister<typename BaseRegs::I2CMDevProfile1>(deviceId);
+		}
+	}
+
+	// Bounded wait for the aux I2C master to finish a transaction. The
+	// unbounded spin this replaces would hang the whole tracker on a wedged or
+	// NAKing aux bus, which is a far worse failure than dropping one
+	// magnetometer byte and retrying on the next pass.
+	static constexpr uint32_t AuxTimeoutMicros = 5000;
+
+	// Pass-through reads carry their own timeout rather than inheriting I2Cdev's
+	// 1000 ms default: a wedged mag must not stall the motion loop for a second
+	// per poll, which is the failure the bounded aux wait above exists to avoid.
+	static constexpr uint16_t AuxPassThroughTimeoutMs = 20;
+
+	bool waitForAux() {
+		uint32_t start = micros();
+		uint8_t status;
+		while ((status = readBankRegister<typename BaseRegs::I2CMStatus>())
+			   & BaseRegs::I2CMStatus::Busy) {
+			if (micros() - start > AuxTimeoutMicros) {
+				m_Logger.error("Aux transaction timed out");
+				return false;
+			}
+		}
+
+		if (status != BaseRegs::I2CMStatus::Done) {
+			m_Logger.error("Aux transaction returned status 0x%02x", status);
+			return false;
+		}
+
+		return true;
+	}
+
+	bool readAuxChecked(uint8_t address, uint8_t& out) {
+		writeBankRegister<typename BaseRegs::I2CMDevProfile0>(address);
+
+		writeBankRegister<typename BaseRegs::I2CMCommand0>(
+			(0b1 << 7)  // Last transaction
+			| (0b0 << 6)  // Channel 0
+			| (0b01 << 4)  // Read with register
+			| (0b0001 << 0)  // Read 1 byte
+		);
+		writeBankRegister<typename BaseRegs::I2CMControl>(
+			(0b0 << 6)  // No restarts
+			| (0b0 << 3)  // Fast mode
+			| (0b1 << 0)  // Start transaction
+		);
+
+		if (!waitForAux()) {
+			return false;
+		}
+
+		out = readBankRegister<typename BaseRegs::I2CMRdData0>();
+		return true;
 	}
 
 	uint8_t readAux(uint8_t address) {
+		uint8_t value = 0;
+		// Through the aux master this is a read op with the register address in
+		// DEV_PROFILE0; in pass-through the register is the read's own address
+		// byte and the answer comes straight back off the host bus.
+		const bool ok = m_auxPassThrough
+			? I2Cdev::readByte(m_auxId, address, &value, AuxPassThroughTimeoutMs) == 1
+			: readAuxChecked(address, value);
+		if (!ok) {
+			m_Logger.error("Aux read from address 0x%02x failed", address);
+		}
+		return value;
+	}
+
+	// Reads `length` consecutive aux registers in a single transaction, so the
+	// bytes all come from the same sample. Reading them one transaction at a
+	// time lets the sensor update mid-way through, splicing two samples into one
+	// vector -- and a spliced magnetometer vector is a heading error, not just
+	// noise, because VQF trusts it.
+	bool readAuxBurst(uint8_t address, uint8_t* out, uint8_t length) {
+		if (length == 0 || length > 6) {
+			return false;
+		}
+
+		if (m_auxPassThrough) {
+			// One host read of `length` consecutive registers, which carries the
+			// same one-sample-per-read guarantee as the aux burst below for one
+			// I2C transaction instead of ten indirect banked accesses and a wait
+			// on the IMU's aux master.
+			return I2Cdev::readBytes(m_auxId, address, length, out, AuxPassThroughTimeoutMs)
+				== length;
+		}
+
 		writeBankRegister<typename BaseRegs::I2CMDevProfile0>(address);
 
 		writeBankRegister<typename BaseRegs::I2CMCommand0>(
 			(0b1 << 7)  // Last transaction
 			| (0b0 << 6)  // Channel 0
 			| (0b01 << 4)  // Read with register
-			| (0b0001 << 0)  // Read 1 byte
+			| (length & 0x0f)  // Read `length` bytes
 		);
 		writeBankRegister<typename BaseRegs::I2CMControl>(
 			(0b0 << 6)  // No restarts
@@ -381,30 +525,49 @@ struct ICM45Base {
 			| (0b1 << 0)  // Start transaction
 		);
 
-		uint8_t lastStatus;
-		while ((lastStatus = readBankRegister<typename BaseRegs::I2CMStatus>())
-			   & BaseRegs::I2CMStatus::Busy)
-			;
-
-		if (lastStatus != BaseRegs::I2CMStatus::Done) {
-			m_Logger.error(
-				"Aux read from address 0x%02x returned status 0x%02x",
-				address,
-				lastStatus
-			);
+		if (!waitForAux()) {
+			return false;
 		}
 
-		return readBankRegister<typename BaseRegs::I2CMRdData0>();
+		// I2CM_RD_DATA0..RD_DATA20 are contiguous, and the indirect access port
+		// auto-increments, so one address write covers the whole burst.
+		uint8_t data[] = {
+			static_cast<uint8_t>(BaseRegs::Bank::IPregTop1),
+			BaseRegs::I2CMRdData0::reg,
+		};
+		m_RegisterInterface.writeBytes(BaseRegs::IRegAddr, sizeof(data), data);
+		delayMicroseconds(BaseRegs::IRegWaitTimeMicros);
+		for (uint8_t i = 0; i < length; i++) {
+			out[i] = m_RegisterInterface.readReg(BaseRegs::IRegData);
+			delayMicroseconds(BaseRegs::IRegWaitTimeMicros);
+		}
+
+		return true;
 	}
 
 	void writeAux(uint8_t address, uint8_t value) {
-		writeBankRegister<typename BaseRegs::I2CMDevProfile0>(address);
-		writeBankRegister<typename BaseRegs::I2CMWrData0>(value);
+		if (m_auxPassThrough) {
+			if (!I2Cdev::writeByte(m_auxId, address, value)) {
+				m_Logger.error("Aux write to address 0x%02x failed", address);
+			}
+			return;
+		}
+
+		// A write op sends its payload as raw bytes -- I2CM_DEV_PROFILE0 is
+		// named rd_address_0 and is only consulted for read ops. So the
+		// register address has to travel as the first byte of the write data,
+		// with the value as the second, and the burst length covering both.
+		// Writing the address to DEV_PROFILE0 and a length of 1 instead (which
+		// is what this did) completes without error and changes nothing, so
+		// every attempt to configure the magnetometer was silently dropped and
+		// it stayed suspended with zeroed data registers.
+		writeBankRegister<typename BaseRegs::I2CMWrData0>(address);
+		writeBankRegister<typename BaseRegs::I2CMWrData1>(value);
 		writeBankRegister<typename BaseRegs::I2CMCommand0>(
 			(0b1 << 7)  // Last transaction
 			| (0b0 << 6)  // Channel 0
-			| (0b01 << 4)  // Read with register
-			| (0b0001 << 0)  // Read 1 byte
+			| (0b00 << 4)  // Write op
+			| (0b0010 << 0)  // Register address + 1 value byte
 		);
 		writeBankRegister<typename BaseRegs::I2CMControl>(
 			(0b0 << 6)  // No restarts
@@ -412,28 +575,24 @@ struct ICM45Base {
 			| (0b1 << 0)  // Start transaction
 		);
 
-		uint8_t lastStatus;
-		while ((lastStatus = readBankRegister<typename BaseRegs::I2CMStatus>())
-			   & BaseRegs::I2CMStatus::Busy)
-			;
-
-		if (lastStatus != BaseRegs::I2CMStatus::Done) {
-			m_Logger.error(
-				"Aux write to address 0x%02x with value 0x%02x returned status 0x%02x",
-				address,
-				value,
-				lastStatus
-			);
+		if (!waitForAux()) {
+			m_Logger.error("Aux write to address 0x%02x failed", address);
 		}
 	}
 
-	void startAuxPolling(uint8_t dataReg, MagDataWidth dataWidth) {
-		// TODO:
-	}
+	// The ICM's hardware aux-FIFO streaming (I2C master polling the mag on its
+	// own schedule and dropping timestamped frames into the FIFO) is not
+	// implemented for this driver family -- it needs the aux routing and ODR
+	// registers configured exactly right, and a wrong bit there can wedge the
+	// aux bus. Instead the sensor reads the mag's data registers itself, either
+	// through the host bus when the aux pins are bridged to it or through the
+	// aux transactions above when they are not, so these two have nothing to do.
+	// Kept because MagInterface still calls them.
+	void startAuxPolling(uint8_t dataReg, MagDataWidth dataWidth) {}
 
-	void stopAuxPolling() {
-		// TODO:
-	}
+	void stopAuxPolling() {}
+
+	void deinit() { softResetIMU(); }
 };
 
 };  // namespace SlimeVR::Sensors::SoftFusion::Drivers

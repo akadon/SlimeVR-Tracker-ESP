@@ -522,6 +522,8 @@ void ICM20948Sensor::calculateAccelerationWithoutGravity(Quat* quaternion) {
 #endif
 }
 
+void ICM20948Sensor::deinit() { imu.swReset(); }
+
 // You need to override the library's initializeDMP to change some settings
 #if OVERRIDEDMPSETUP
 // initializeDMP is a weak function. Let's overwrite it so we can increase the sample

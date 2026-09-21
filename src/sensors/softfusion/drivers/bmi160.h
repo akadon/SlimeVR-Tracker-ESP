@@ -222,6 +222,10 @@ struct BMI160 {
 		}
 		return static_cast<size_t>(fifo_bytes) > static_cast<size_t>(bytes_to_read);
 	}
+
+	void deinit() {
+		m_RegisterInterface.writeReg(Regs::Cmd::reg, Regs::Cmd::valueSoftReset);
+	}
 };
 
 }  // namespace SlimeVR::Sensors::SoftFusion::Drivers

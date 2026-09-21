@@ -12,14 +12,17 @@ void TemperatureGradientCalculator::feedSample(float sample, float timeStep) {
 }
 
 void TemperatureGradientCalculator::tick() {
-	uint64_t nextCheck
-		= lastAverageSentMillis + static_cast<uint64_t>(AveragingTimeSeconds * 1e3);
+	uint32_t now = millis();
 
-	if (millis() < nextCheck) {
+	// Unsigned subtraction, so this stays correct across the millis() wrap.
+	if (now - lastAverageSentMillis
+		< static_cast<uint32_t>(AveragingTimeSeconds * 1e3)) {
 		return;
 	}
 
-	lastAverageSentMillis = nextCheck;
+	// Restart the averaging window from now rather than from a fixed schedule, so a
+	// stall (or the wrap) does not leave a backlog of periods to fire off at once.
+	lastAverageSentMillis = now;
 	float average = tempSum / AveragingTimeSeconds;
 	callback((average - lastTempAverage) / AveragingTimeSeconds);
 	lastTempAverage = average;
