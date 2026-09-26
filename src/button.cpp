@@ -25,11 +25,12 @@ void OnOffButton::setup() {
 	pinMode(ON_OFF_BUTTON_PIN, INPUT);
 #endif
 
-// `#ifdef`, not `#if ESP32`: this core defines ESP32 as the bare token `ESP32`
-// rather than as 1, so a value test is false and everything in these blocks --
-// the button's pull-up, the wake source, and the deep sleep in goToSleep() --
-// compiles out without a word. The tracker then cannot be woken by the button
-// and never powers itself off, which is exactly how it behaved.
+	// `#ifdef`, not `#if ESP32`: this core defines ESP32 as the bare token
+	// `ESP32` rather than as 1, so a value test is false and everything in
+	// these blocks -- the button's pull-up, the wake source, and the deep
+	// sleep in goToSleep() -- compiles out without a word. The tracker then
+	// cannot be woken by the button and never powers itself off, which is
+	// exactly how it behaved.
 #ifdef ESP32
 	pinMode(
 		ON_OFF_BUTTON_PIN,
