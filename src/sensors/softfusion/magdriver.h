@@ -38,6 +38,11 @@ enum class MagDataWidth {
 
 struct MagInterface {
 	std::function<uint8_t(uint8_t)> readByte;
+	// Whether a device answers at the id the last setDeviceId() set. Asked before
+	// each candidate's who-am-I read, so that the read is only aimed at a chip
+	// that is there. Left unset by a caller whose bus asks this silently anyway,
+	// and init() then probes with the read.
+	std::function<bool()> probePresent;
 	std::function<void(uint8_t, uint8_t)> writeByte;
 	std::function<void(uint8_t)> setDeviceId;
 	std::function<void(uint8_t, MagDataWidth)> startPolling;

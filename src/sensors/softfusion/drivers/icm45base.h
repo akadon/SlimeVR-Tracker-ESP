@@ -24,6 +24,8 @@
 #include <array>
 #include <cstdint>
 
+#include <Wire.h>
+
 #include "../../../sensorinterface/RegisterInterface.h"
 #include "callbacks.h"
 #include "sensors/softfusion/magdriver.h"
@@ -476,6 +478,30 @@ struct ICM45Base {
 
 		out = readBankRegister<typename BaseRegs::I2CMRdData0>();
 		return true;
+	}
+
+	// Whether anything answers at the aux device's address at all.
+	//
+	// Asked before the who-am-I read, because that read has a chip that is not
+	// fitted as one of its normal answers: MagDriver::init walks a list of
+	// candidates and a board carries one of them, so reading a register at the
+	// address of an absent chip is a step of detection rather than a fault. On the
+	// host bus it does not look like one -- the core prints two errors for each
+	// absent candidate, an ESP_ERR_INVALID_STATE from i2c_master_transmit_receive
+	// and the Wire error that reports it -- so every boot of every board carried
+	// errors about a chip it was never going to have. A transmit of no bytes is
+	// the same question in the one form the core logs only at verbose: it runs the
+	// IDF device probe, which reports a missing device through its return code.
+	bool auxDevicePresent() {
+		if (!m_auxPassThrough) {
+			// Through the IMU's own aux master a missing device only sets the
+			// status register that waitForAux polls, and nothing is printed either
+			// way, so the who-am-I read can be the question there.
+			return true;
+		}
+
+		Wire.beginTransmission(m_auxId);
+		return Wire.endTransmission() == 0;
 	}
 
 	uint8_t readAux(uint8_t address) {
