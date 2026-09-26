@@ -71,14 +71,20 @@ void OnOffButton::tick() {
 	// Start the countdown on the connected -> disconnected edge, never on the
 	// disconnection check itself: resetting every loop would keep the timer at
 	// zero and the tracker would never sleep.
-	if (!connected) {
-		if (!wasDisconnected) {
-			wasDisconnected = true;
-			disconnectedSinceMillis = millis();
-		} else if (millis() - disconnectedSinceMillis
-				   >= BUTTON_DISCONNECT_SLEEP_SECONDS * 1e3) {
-			goToSleep("no SlimeVR connection");
-		}
+	//
+	// The flag has to be cleared again while connected, or it latches on the first
+	// disconnection the tracker ever sees and `disconnectedSinceMillis` keeps that
+	// one timestamp for the rest of the session -- so the next missed packet, which
+	// is all a server restart or a brief dropout looks like, finds the countdown
+	// already expired and sleeps the tracker on the spot.
+	if (connected) {
+		wasDisconnected = false;
+	} else if (!wasDisconnected) {
+		wasDisconnected = true;
+		disconnectedSinceMillis = millis();
+	} else if (millis() - disconnectedSinceMillis
+			   >= BUTTON_DISCONNECT_SLEEP_SECONDS * 1e3) {
+		goToSleep("no SlimeVR connection");
 	}
 #endif
 

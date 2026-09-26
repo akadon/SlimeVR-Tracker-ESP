@@ -25,6 +25,16 @@
 // https://docs.slimevr.dev/firmware/configuring-project.html#2-configuring-definesh
 // ================================================
 
+// Local, git-ignored WiFi credentials, when this checkout has them. Absent from
+// CI and from a fresh clone, which is why every WIFI_CREDS_* use is behind
+// #if defined() -- without this file the tracker comes up in AP mode instead of
+// joining a network, exactly as if the build flags had been left commented out.
+#ifdef __has_include
+#if __has_include("wifi_creds_local.h")
+#include "wifi_creds_local.h"
+#endif
+#endif
+
 // Set parameters of IMU and board used
 #ifndef IMU
 #define IMU IMU_ICM45686
@@ -83,12 +93,14 @@
 
 // --- ON/OFF BUTTON
 // Active-low button, with a separately switched IMU rail. Clicking it powers the
-// tracker on; it powers itself back off once SlimeVR has been gone this long.
+// tracker on; it powers itself back off once SlimeVR has been gone this long --
+// three minutes, long enough to ride out a server restart or a tracker carried
+// out of range, short enough that one left on does not sit there draining.
 #define ON_OFF_BUTTON_PIN 1
 #define BUTTON_ACTIVE_LEVEL 0
 #define BUTTON_IMU_ENABLE_PIN 10
 #define BUTTON_IMU_ENABLE_ACTIVE_LEVEL 1
-#define BUTTON_DISCONNECT_SLEEP_SECONDS (10 * 60)
+#define BUTTON_DISCONNECT_SLEEP_SECONDS (3 * 60)
 
 #define PIN_IMU_SDA 5
 #define PIN_IMU_SCL 6

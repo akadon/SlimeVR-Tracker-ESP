@@ -55,6 +55,9 @@ public:
 	void setWiFiCredentials(const char* SSID, const char* pass);
 	static IPAddress getAddress();
 	WiFiReconnectionStatus getWiFiState();
+	/// The SSID this tracker will try first, from NVS. Read-only: useful in
+	/// diagnostics to see which network a connection attempt is aimed at.
+	static String getSSID();
 
 private:
 	static constexpr float WiFiTimeoutSeconds = 11;
@@ -63,7 +66,6 @@ private:
 	void setStaticIPIfDefined();
 	void onConnected();
 
-	static String getSSID();
 	static String getPassword();
 
 	bool trySavedCredentials();

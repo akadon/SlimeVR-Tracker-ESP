@@ -1,4 +1,6 @@
 .pio
+# Local WiFi credentials -- must never be committed.
+src/wifi_creds_local.h
 .vscode/*
 build/
 venv/

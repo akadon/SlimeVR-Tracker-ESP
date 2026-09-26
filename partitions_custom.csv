@@ -1,0 +1,19 @@
+# Custom partition table for the 4 MB ESP32-C3 trackers.
+#
+# The stock default.csv gives each of its two OTA app slots 0x140000 (1.25 MB).
+# The arduino-esp32 3.0.4 build produces a 1.32 MB image, which no longer fits --
+# flashing it left the tracker in a boot loop:
+#     E esp_image: Image length 1323376 doesn't fit in partition length 1310720
+#     E boot: No bootable app partitions in the partition table
+#
+# Both app slots are widened to 0x1B0000 (1.69 MB, ~446 KB of headroom) so OTA
+# stays available. LittleFS gives up the difference; the firmware only keeps
+# configuration toggles there, so 0x80000 is ample.
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
+app0,       app,  ota_0,    0x10000,  0x1B0000,
+app1,       app,  ota_1,    0x1C0000, 0x1B0000,
+spiffs,     data, spiffs,   0x370000, 0x80000,
+coredump,   data, coredump, 0x3F0000, 0x10000,

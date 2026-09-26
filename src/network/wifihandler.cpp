@@ -178,9 +178,14 @@ void WiFiNetwork::upkeep() {
 		reportWifiProgress();
 	}
 
+	// An attempt in flight reports WL_IDLE_STATUS while the association is being
+	// set up, not WL_DISCONNECTED -- so waiting only on the latter lets the state
+	// machine below run mid-attempt, report a failure that has not happened, and
+	// cut the attempt short.
+	const auto status = WiFi.status();
 	if (millis() - wifiConnectionTimeout
 			< static_cast<uint32_t>(WiFiTimeoutSeconds * 1000)
-		&& WiFi.status() == WL_DISCONNECTED) {
+		&& (status == WL_DISCONNECTED || status == WL_IDLE_STATUS)) {
 		return;
 	}
 
@@ -288,8 +293,18 @@ bool WiFiNetwork::trySavedCredentials() {
 	if (getSSID().length() == 0) {
 		wifiHandlerLogger.debug("Skipping saved credentials attempt on 0-length SSID..."
 		);
-		wifiState = WiFiReconnectionStatus::HardcodeAttempt;
-		return false;
+		// Nothing was attempted here, so nothing may be recorded as attempted.
+		// tryHardcodedCredentials() reads HardcodeAttempt as "the hardcoded
+		// credentials have been tried and their timeout has expired", so setting
+		// it to mean "hardcoded comes next" makes that function take its
+		// already-failed branch and return without ever calling WiFi.begin().
+		// With the saved SSID empty -- a factory reset, or a tracker flashed
+		// with WIFI_CREDS_* for the first time -- that is every attempt: the
+		// credentials that exist are never actually tried, the station is left
+		// with no SSID configured at all, and later connect attempts fail with
+		// ESP_ERR_WIFI_SSID. Call the hardcoded attempt instead; it sets the
+		// state itself.
+		return tryHardcodedCredentials();
 	}
 
 	if (wifiState == WiFiReconnectionStatus::SavedAttempt) {

@@ -26,6 +26,11 @@
 #include "../GlobalVars.h"
 
 namespace SlimeVR {
+namespace {
+// Half-period of the blink shown while the tracker is powered but not connected.
+constexpr unsigned long LED_BLINK_MS = 500;
+}  // namespace
+
 void LEDManager::setup() {
 	if (m_Enabled) {
 		pinMode(m_Pin, OUTPUT);
@@ -63,25 +68,47 @@ void LEDManager::pattern(unsigned long timeon, unsigned long timeoff, int times)
 void LEDManager::setOwned(bool owned) { m_Owned = owned; }
 
 void LEDManager::update() {
-	// The LED carries exactly one meaning: SlimeVR is connected. It stays dark
-	// at every other moment, including while the tracker is still hunting for
-	// the server, so a lit LED is never ambiguous about what it is telling you.
+	// The LED says whether SlimeVR has this tracker: a steady glow once the
+	// server handshake has gone through, a blink while the tracker is on but has
+	// not got there yet -- still searching, or dropped off. Dark means it is not
+	// running.
+	//
+	// It reports the server rather than WiFi, because the server connection is
+	// what the tracker is for: a tracker with the network but not the server
+	// tracks nothing, and glowing for it would read as working.
 	//
 	// Written unconditionally rather than only when the state changes, because
 	// the calibration routines drive the LED directly through on()/off(). A
 	// change-only write would leave whatever they last set in place.
 	//
 	// While one of those routines owns the LED it is showing something with it,
-	// and repainting from the connection state would put the two meanings on the
-	// same light at the same time.
+	// and repainting from here would put the two meanings on the same light at
+	// the same time.
 	if (m_Owned) {
 		return;
 	}
 
 	if (networkConnection.isConnected()) {
+		// Leave the blink starting from a lit phase, so the tracker is seen to
+		// be blinking as soon as the server drops it rather than sitting dark
+		// for half a period first.
+		m_BlinkLit = false;
+		m_LastBlinkToggle = millis();
 		on();
-	} else {
-		off();
+		return;
+	}
+
+	// millis() based rather than blink()/pattern(), which delay(): update() runs
+	// once per loop, and blocking here would stall the tracker's main loop.
+	const unsigned long now = millis();
+	if (now - m_LastBlinkToggle >= LED_BLINK_MS) {
+		m_LastBlinkToggle = now;
+		m_BlinkLit = !m_BlinkLit;
+		if (m_BlinkLit) {
+			on();
+		} else {
+			off();
+		}
 	}
 }
 }  // namespace SlimeVR

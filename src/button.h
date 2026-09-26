@@ -83,7 +83,9 @@ private:
 
 	uint64_t disconnectedSinceMillis = 0;
 	// Starts true so that a tracker which boots and never reaches SlimeVR still
-	// powers itself back off instead of draining itself flat waiting.
+	// powers itself back off instead of draining itself flat waiting. Cleared on
+	// every connected report, so the countdown always starts at the disconnection
+	// it is counting.
 	bool wasDisconnected = true;
 	// Whether SlimeVR has been heard from since the last tick.
 	bool connected = false;
