@@ -34,6 +34,7 @@
 #include "logging/SerialBuffer.h"
 #include "ota.h"
 #include "preinit.h"
+#include "sensorinterface/I2CWireSensorInterface.h"
 #include "sensors/MagCalibrationMode.h"
 #include "serial/serialcommands.h"
 #include "status/TPSCounter.h"
@@ -151,7 +152,12 @@ void setup() {
 
 	// using `static_cast` here seems to be better, because there are 2 similar function
 	// signatures
-	Wire.begin(static_cast<int>(PIN_IMU_SDA), static_cast<int>(PIN_IMU_SCL));
+	if (Wire.begin(static_cast<int>(PIN_IMU_SDA), static_cast<int>(PIN_IMU_SCL))) {
+		// The bus now lives on these pins for good, so tell the sensor
+		// interfaces: without this the first swapIn() tears it down and starts
+		// it again on the very same pins.
+		SlimeVR::markI2CActive(PIN_IMU_SCL, PIN_IMU_SDA);
+	}
 
 #ifdef ESP8266
 	Wire.setClockStretchLimit(150000L);  // Default stretch limit 150mS

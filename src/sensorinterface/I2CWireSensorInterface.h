@@ -34,6 +34,12 @@ namespace SlimeVR {
 void swapI2C(uint8_t sclPin, uint8_t sdaPin);
 void disconnectI2C();
 
+/// Record that the (shared) Wire bus is already up on these pins, so the next
+/// swapI2C() to the same pins is a no-op instead of a teardown and rebuild.
+void markI2CActive(uint8_t sclPin, uint8_t sdaPin);
+
+extern uint32_t i2cBusRebuilds;
+
 /**
  * I2C Sensor interface using direct arduino Wire on provided pins
  *

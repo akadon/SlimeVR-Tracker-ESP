@@ -32,6 +32,7 @@
 #include "base64.hpp"
 #include "batterymonitor.h"
 #include "logging/Logger.h"
+#include "sensorinterface/I2CWireSensorInterface.h"
 #include "utils.h"
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
@@ -504,13 +505,16 @@ void cmdSet(CmdParser* parser) {
 void printState() {
 	logger.info(
 		"SlimeVR Tracker, board: %d, hardware: %d, protocol: %d, firmware: %s, "
-		"address: %s, mac: %s, status: %d, wifi state: %d",
+		"address: %s, mac: %s, imu rotation: %.0f deg, status: %d, wifi state: %d",
 		BOARD,
 		HARDWARE_MCU,
 		PROTOCOL_VERSION,
 		FIRMWARE_VERSION,
 		wifiNetwork.getAddress().toString().c_str(),
 		WiFi.macAddress().c_str(),
+		// The rotation this build bakes in, so a tracker reported as reading
+		// inverted can be checked against what the firmware was built with.
+		IMU_ROTATION * RAD_TO_DEG,
 		statusManager.getStatus(),
 		static_cast<int>(wifiNetwork.getWiFiState())
 	);
@@ -681,6 +685,10 @@ void printState() {
 		battery.getVoltage(),
 		battery.getLevel() * 100
 	);
+	// Every sensor shares one Wire bus; each swapIn() to a different pin pair
+	// tears it down and starts it again. A count that stays at its boot value
+	// means nothing is thrashing the bus.
+	logger.info("I2C bus rebuilds: %u", static_cast<unsigned>(SlimeVR::i2cBusRebuilds));
 }
 
 #ifdef ESP32
@@ -783,6 +791,18 @@ void cmdGet(CmdParser* parser) {
 	}
 
 	if (parser->equalCmdParam(1, "WIFISCAN")) {
+		// Which network the tracker would aim at, next to what the radio can
+		// hear: the scan alone cannot show a stored SSID that is a byte off, and
+		// that looks identical to an access point that is out of range.
+		logger.info(
+			"[WSCAN] Credentials in use: saved '%s' / hardcoded '%s'",
+			wifiNetwork.getSSID().c_str(),
+#if defined(WIFI_CREDS_SSID)
+			WIFI_CREDS_SSID
+#else
+			"(none)"
+#endif
+		);
 		logger.info("[WSCAN] Scanning for WiFi networks...");
 
 		// Scan would fail if connecting, stop connecting before scan
@@ -815,7 +835,14 @@ void cmdGet(CmdParser* parser) {
 
 		// Restore conencting state
 		if (WiFi.status() != WL_CONNECTED) {
-			WiFi.begin();
+			// Only worth asking for if there is an SSID to ask with: with an
+			// empty station config this fails with ESP_ERR_WIFI_SSID, which
+			// reads as a scan problem and is not one.
+			if (wifiNetwork.getSSID().length() > 0) {
+				WiFi.begin();
+			} else {
+				logger.info("[WSCAN] No stored SSID, leaving the WiFi state alone");
+			}
 		}
 	}
 }

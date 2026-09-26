@@ -25,23 +25,44 @@
 
 #include <optional>
 
-#ifdef ESP32
-#include "driver/i2c.h"
-#endif
-
 std::optional<uint8_t> activeSCLPin;
 std::optional<uint8_t> activeSDAPin;
 bool isI2CActive = false;
 
 namespace SlimeVR {
+// main.cpp brings Wire up on the board's IMU pins before any sensor exists, so
+// by the time the first sensor calls swapIn() the bus is already live on the
+// pins that sensor asks for. Recording that here keeps the first swapIn() from
+// tearing down and rebuilding a bus that is already in use -- the teardown is
+// both pointless and the one operation on this bus that can leave the driver's
+// semaphores and event queue behind in a bad state.
+void markI2CActive(uint8_t sclPin, uint8_t sdaPin) {
+	activeSCLPin = sclPin;
+	activeSDAPin = sdaPin;
+	isI2CActive = true;
+}
+
+// Counts teardowns and restarts of the bus. swapIn() runs every loop iteration,
+// so this is not logged as it happens: it belongs in GET INFO, where it is read
+// on demand and a number that keeps climbing is the signal that something is
+// re-pointing a bus it does not need to.
+uint32_t i2cBusRebuilds = 0;
+
 void swapI2C(uint8_t sclPin, uint8_t sdaPin) {
 	if (sclPin != activeSCLPin || sdaPin != activeSDAPin || !isI2CActive) {
+		i2cBusRebuilds++;
 		Wire.flush();
 #ifdef ESP32
-		if (!isI2CActive) {
-			// Reset HWI2C to avoid being affected by I2CBUS reset
-			Wire.end();
-		}
+		// Landing the bus on a different pair of pins means tearing it down and
+		// starting it again: the driver_ng API behind Wire has no re-point call,
+		// and Wire.begin() deliberately refuses to touch a bus that is already
+		// up. The legacy i2c_set_pin() that used to serve the second case
+		// cannot be used here at all -- referencing it drags the legacy driver
+		// into the link, and that driver's startup constructor aborts the whole
+		// boot on ESP-IDF 5.x the moment anything else uses driver_ng, which is
+		// what arduino-esp32 3.x's Wire does. Wire.end() is a no-op when the
+		// bus is not up, so this covers both cases.
+		Wire.end();
 
 		if (activeSCLPin && activeSCLPin) {
 			// Disconnect pins from HWI2C
@@ -49,12 +70,8 @@ void swapI2C(uint8_t sclPin, uint8_t sdaPin) {
 			gpio_set_direction((gpio_num_t)*activeSDAPin, GPIO_MODE_INPUT);
 		}
 
-		if (isI2CActive) {
-			i2c_set_pin(I2C_NUM_0, sdaPin, sclPin, false, false, I2C_MODE_MASTER);
-		} else {
-			Wire.begin(static_cast<int>(sdaPin), static_cast<int>(sclPin), I2C_SPEED);
-			Wire.setTimeOut(150);
-		}
+		Wire.begin(static_cast<int>(sdaPin), static_cast<int>(sclPin), I2C_SPEED);
+		Wire.setTimeOut(150);
 #else
 		Wire.begin(static_cast<int>(sdaPin), static_cast<int>(sclPin));
 #endif

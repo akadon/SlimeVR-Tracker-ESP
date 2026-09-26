@@ -59,8 +59,10 @@ public:
 	void pattern(unsigned long timeon, unsigned long timeoff, int times);
 
 	/*!
-	 *  @brief Drives the LED from the connection state: lit for as long as
-	 *  SlimeVR is connected, dark at every other moment.
+	 *  @brief Puts the SlimeVR connection on the LED: a steady glow while the
+	 *  tracker is connected to the server, a blink while it is on but has not got
+	 *  there yet. A tracker that is on is therefore never mistaken for one that
+	 *  is off, and never mistaken for one that is tracking.
 	 */
 	void update();
 
@@ -78,6 +80,8 @@ private:
 	bool m_On = LED_INVERTED ? LOW : HIGH;
 	bool m_Off = !m_On;
 	bool m_Owned = false;
+	unsigned long m_LastBlinkToggle = 0;
+	bool m_BlinkLit = false;
 
 	Logging::Logger m_Logger = Logging::Logger("LEDManager");
 };
