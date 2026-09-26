@@ -2,7 +2,7 @@
 
 #include <climits>
 
-#if ESP32
+#ifdef ESP32
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
 #endif
@@ -25,7 +25,12 @@ void OnOffButton::setup() {
 	pinMode(ON_OFF_BUTTON_PIN, INPUT);
 #endif
 
-#if ESP32
+// `#ifdef`, not `#if ESP32`: this core defines ESP32 as the bare token `ESP32`
+// rather than as 1, so a value test is false and everything in these blocks --
+// the button's pull-up, the wake source, and the deep sleep in goToSleep() --
+// compiles out without a word. The tracker then cannot be woken by the button
+// and never powers itself off, which is exactly how it behaved.
+#ifdef ESP32
 	pinMode(
 		ON_OFF_BUTTON_PIN,
 		BUTTON_ACTIVE_LEVEL == 0 ? INPUT_PULLUP : INPUT_PULLDOWN
@@ -164,7 +169,7 @@ void OnOffButton::goToSleep(const char* reason) {
 
 	emitOnBeforeSleep();
 
-#if defined(BUTTON_IMU_ENABLE_PIN) && ESP32
+#if defined(BUTTON_IMU_ENABLE_PIN) && defined(ESP32)
 	digitalWrite(BUTTON_IMU_ENABLE_PIN, LOW);
 	gpio_hold_en(static_cast<gpio_num_t>(BUTTON_IMU_ENABLE_PIN));
 #endif
@@ -179,9 +184,9 @@ void OnOffButton::goToSleep(const char* reason) {
 
 	ledManager.pattern(flashOnMillis, flashOffMillis, flashCount);
 
-#if ESP8266
+#ifdef ESP8266
 	ESP.deepSleep(0);
-#elif ESP32
+#elif defined(ESP32)
 	esp_deep_sleep_start();
 #endif
 }

@@ -249,7 +249,7 @@ const char* WiFiNetwork::statusToReasonString(wl_status_t status) {
 			return "Wrong password";
 		case WL_CONNECT_FAILED:
 			return "Connection failed";
-#elif ESP32
+#elif defined(ESP32)
 		case WL_CONNECT_FAILED:
 			return "Wrong password";
 #endif
@@ -268,7 +268,7 @@ WiFiNetwork::WiFiFailureReason WiFiNetwork::statusToFailure(wl_status_t status) 
 #ifdef ESP8266
 		case WL_WRONG_PASSWORD:
 			return WiFiFailureReason::WrongPassword;
-#elif ESP32
+#elif defined(ESP32)
 		case WL_CONNECT_FAILED:
 			return WiFiFailureReason::WrongPassword;
 #endif
