@@ -102,6 +102,13 @@ bool MagDriver::init(MagInterface&& interface, bool supports9ByteMags) {
 
 		logger.info("Trying mag %s!", mag.name);
 
+		// Ask whether a chip is there before reading its identity: a candidate the
+		// board does not carry is a normal step of detection, and the read is what
+		// makes it look like a fault. See MagInterface::probePresent.
+		if (interface.probePresent && !interface.probePresent()) {
+			continue;
+		}
+
 		uint8_t whoAmI = interface.readByte(mag.whoAmIReg);
 		if (whoAmI != mag.expectedWhoAmI) {
 			continue;

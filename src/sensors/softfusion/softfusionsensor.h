@@ -363,6 +363,7 @@ public:
 				SoftFusion::MagInterface{
 					.readByte
 					= [&](uint8_t address) { return m_sensor.readAux(address); },
+					.probePresent = [&]() { return m_sensor.auxDevicePresent(); },
 					.writeByte
 					= [&](uint8_t address, uint8_t value) {
 						  m_sensor.writeAux(address, value);

@@ -818,13 +818,18 @@ void cmdGet(CmdParser* parser) {
 		int scanRes = WiFi.scanComplete();
 		if (scanRes >= 0) {
 			logger.info("[WSCAN] Found %d networks:", scanRes);
+			// The columns are named because this listing is read against the
+			// credentials line above it, and a bare number between the index and
+			// the name invites a wrong reading -- which is what happened to the
+			// SSID length that used to be printed here, and was read as a channel.
+			logger.info("[WSCAN] idx\tchannel\trssi\tname\tencryption");
 			for (int i = 0; i < scanRes; i++) {
 				logger.info(
-					"[WSCAN] %d:\t%02d\t'%s'\t(%d dBm)\t%s",
+					"[WSCAN] %d:\t%d\t%d dBm\t'%s'\t%s",
 					i,
-					WiFi.SSID(i).length(),
-					WiFi.SSID(i).c_str(),
+					WiFi.channel(i),
 					WiFi.RSSI(i),
+					WiFi.SSID(i).c_str(),
 					getEncryptionTypeName(WiFi.encryptionType(i)).c_str()
 				);
 			}
